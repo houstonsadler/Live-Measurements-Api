@@ -1,5 +1,6 @@
 # Use a small Python base image
 FROM python:3.10-slim
+apt-get install -y --no-install-recommends libgl1 libglib2.0-0 git
 
 # Keep installs quiet/clean
 ENV DEBIAN_FRONTEND=noninteractive \
