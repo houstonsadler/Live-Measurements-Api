@@ -18,4 +18,4 @@ COPY . /app
 ENV PORT=8000
 
 # 👇 Corrected CMD line
-CMD bash -c "gunicorn app:app --bind 0.0.0.0:${PORT:-8000} --workers=2 --threads=4 --timeout=180"
+CMD bash -c "gunicorn app:app --bind 0.0.0.0:${PORT:-8000} --workers=1 --threads=1 --timeout=180"
