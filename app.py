@@ -699,6 +699,13 @@ def upload_images():
 # -------------------------------------------------------------------
 # Entrypoint
 # -------------------------------------------------------------------
+@app.route("/", methods=["GET"])
+def health_check():
+    return jsonify({
+        "status": "ok",
+        "service": "live-measurements-api",
+        "message": "upload_images endpoint is ready"
+    }), 200
 
 if __name__ == "__main__":
     # Render sets $PORT. Locally and in Docker, we default to 8000.
