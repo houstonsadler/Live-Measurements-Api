@@ -15,7 +15,7 @@ from depth.loader import load_depth_model
 
 app = Flask(__name__)
 
-# Initialize MediaPipe
+# Initialize MediaPipe (loaded once at startup, not per request)
 mp_pose = mp.solutions.pose
 mp_holistic = mp.solutions.holistic
 pose = mp_pose.Pose(model_complexity=2)
@@ -25,6 +25,7 @@ holistic = mp_holistic.Holistic()
 KNOWN_OBJECT_WIDTH_CM = 21.0  # reference object (e.g. A4 paper width)
 FOCAL_LENGTH = 600            # default focal length guess if we can't calibrate
 DEFAULT_HEIGHT_CM = 152.0     # fallback height if user doesn't send height_cm
+MAX_DIM = 1280                # max image dimension after downscale, to save RAM
 
 # Load the depth model once at startup
 depth_model = load_depth_model()
@@ -57,8 +58,7 @@ def quality_note(measurements_cm):
     hip_circ   = measurements_cm.get("hip_circumference_cm")
     waist_circ = measurements_cm.get("waist_circumference_cm")
 
-    # 1. Hips much larger than chest (camera angle, stance, loose clothing)
-    # Use ~1.4x chest instead of 2.0x so we catch more weird cases.
+    # 1. Hips much larger than chest => probably jacket flare, stance, angle
     if chest_circ and hip_circ:
         if hip_circ > (1.4 * chest_circ):
             notes.append(
@@ -66,7 +66,7 @@ def quality_note(measurements_cm):
                 "Stand straight, keep feet under hips, arms slightly out, and avoid jackets or loose fabric."
             )
 
-    # 2. Waist way too small vs chest (e.g. shadow cut-in)
+    # 2. Waist way too tiny => probably shadows/arms blocking torso
     if chest_circ and waist_circ:
         if waist_circ < (0.6 * chest_circ):
             notes.append(
@@ -603,6 +603,38 @@ def validate_front_image(image_np):
         return False, "Image could not be read. Please retake and try again."
 
 # -------------------------------------------------------------------
+# Image downscale helper
+# -------------------------------------------------------------------
+
+def downscale_frame_if_needed(frame):
+    """
+    Shrink super high-res phone images so they don't eat all memory.
+    Keeps aspect ratio. Caps longest side at MAX_DIM.
+    Also logs original -> resized for debugging in Render logs.
+    """
+    if frame is None:
+        return frame
+
+    h, w = frame.shape[:2]
+    longest = max(h, w)
+    if longest <= MAX_DIM:
+        # no resize needed
+        return frame
+
+    scale = MAX_DIM / longest
+    new_w = int(w * scale)
+    new_h = int(h * scale)
+
+    print(f"[resize] original={w}x{h} -> resized={new_w}x{new_h}")
+
+    frame = cv2.resize(
+        frame,
+        (new_w, new_h),
+        interpolation=cv2.INTER_AREA
+    )
+    return frame
+
+# -------------------------------------------------------------------
 # Routes
 # -------------------------------------------------------------------
 
@@ -622,6 +654,7 @@ def upload_images():
       - front (REQUIRED): full-body front image
       - left_side (OPTIONAL): side image
       - height_cm (OPTIONAL): your real height in cm (improves scale)
+
     Returns:
       - measurements (cm + in)
       - debug_info (scale factor, etc.)
@@ -635,6 +668,9 @@ def upload_images():
     front_np = np.frombuffer(front_file.read(), np.uint8)
     front_file.seek(0)
     front_frame = cv2.imdecode(front_np, cv2.IMREAD_COLOR)
+
+    # ↓ DOWN-SCALE FRONT IMAGE
+    front_frame = downscale_frame_if_needed(front_frame)
 
     # Validate person framing
     is_valid, error_msg = validate_front_image(front_frame)
@@ -666,6 +702,9 @@ def upload_images():
     for pose_name, file in received_images.items():
         img_np = np.frombuffer(file.read(), np.uint8)
         frame = cv2.imdecode(img_np, cv2.IMREAD_COLOR)
+
+        # ↓ DOWN-SCALE EACH FRAME BEFORE ANY HEAVY WORK
+        frame = downscale_frame_if_needed(frame)
 
         # Run holistic model on this frame
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
