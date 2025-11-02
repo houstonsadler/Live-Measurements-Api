@@ -1,90 +1,99 @@
-# AI-Based Human Body Measurement System for Tailoring & Fashion E-Commerce
+# AI-Based Human Body Measurement API  
+*(Tailoring & Fashion E-Commerce Ready)*
 
-This project is a real-time body measurement API built with **Flask**, **MediaPipe**, **OpenCV**, and **PyTorch**. By analyzing **front and side pose images** of a person, it calculates accurate human body measurements useful for tailoring, clothing size prediction, and virtual fitting rooms.
-
-> 📸 Just send **front and side pose images** (captured using a smartphone or webcam) to this API, and receive key body measurements in centimeters — perfect for fashion retail platforms and tailor-made garment businesses.
-
----
-
-## Features
-
-- Real-time image-based body measurement
-- AI-powered depth estimation using **MiDaS**
-- Measurement accuracy with a deviation of **±2-3 cm**
-- Calibrates scale using an **A4 paper** as a reference object
-- Easily integratable into fashion e-commerce or tailoring platforms
-- No external APIs — runs entirely on your local or server environment
+This project provides an **AI-powered body measurement API** built with **Flask**, **MediaPipe**, **OpenCV**, and **PyTorch**.  
+By analyzing **front and side images**, it estimates key human body measurements for **tailoring, virtual fitting, and fashion e-commerce** — without requiring manual measuring tools or external APIs.
 
 ---
 
+## ✨ Key Features
 
-## Libraries Used
-
-| Library         | Purpose                                                                 |
-|----------------|-------------------------------------------------------------------------|
-| `Flask`        | To expose a simple HTTP API                                             |
-| `OpenCV`       | For image processing and contour detection                              |
-| `MediaPipe`    | For pose landmark detection (shoulders, hips, etc.)                     |
-| `PyTorch`      | For AI-based **depth estimation** using [MiDaS](https://github.com/isl-org/MiDaS) |
-| `torchvision`  | Support for model loading & image transformations                       |
+- **Full-body image measurement** via front + optional side pose.
+- **AI depth estimation** using a **local MiDaS model** (no external downloads).
+- **Automatic scale calibration** via user height or A4 reference object.
+- **JSON response with measurements in cm and inches**.
+- **Quality feedback** — API returns human-readable notes if measurements seem off (e.g. hips too wide, waist too small).
+- **Lightweight Docker + Render deployment**.
+- **Runs fully offline** (no external API dependencies).
 
 ---
 
-# How It Works
+## 🧠 Core Libraries
 
-1. Detects key landmarks using **MediaPipe Pose** (shoulders, hips, knees, ankles).
-2. Uses **A4 paper** in the image to calibrate real-world scale from pixels.
-3. Enhances width and depth estimation using the **MiDaS depth AI model**.
-4. Calculates measurements using geometric approximations (**elliptical body model**).
-5. Returns measurement data in **JSON format**.
+| Library | Purpose |
+|----------|----------|
+| `Flask` | REST API server |
+| `MediaPipe` | Pose landmark detection (shoulders, hips, knees, ankles) |
+| `OpenCV` | Image preprocessing and contour analysis |
+| `PyTorch` | Local **MiDaS** model for depth inference |
+| `Gunicorn` | Production WSGI server (used on Render) |
 
+---
 
-## How to Run
+## ⚙️ How It Works
+
+1. **Pose Detection**  
+   MediaPipe finds 3D body landmarks (shoulders, hips, ankles, etc.).
+
+2. **Scale Calibration**  
+   The system computes pixel-to-cm ratio using either:
+   - User-provided `height_cm`, or  
+   - A detected A4 reference sheet.
+
+3. **Depth Estimation**  
+   Local MiDaS model produces a depth map to improve circumference accuracy.
+
+4. **Measurement Extraction**  
+   Uses geometric approximations (elliptical model) to calculate chest, waist, hip, neck, thigh, and limb dimensions.
+
+5. **Validation & Feedback**  
+   If proportions are unrealistic, the system adds `"notes"` to the JSON output suggesting how to retake the image.
+
+---
+
+## 🚀 API Overview
+
+### **POST** `/upload_images`
+
+**Form fields:**
+
+| Field | Type | Required | Description |
+|--------|------|-----------|-------------|
+| `front` | file | ✅ | Full-body front image |
+| `left_side` | file | Optional | Side image for better depth estimation |
+| `height_cm` | float | Optional | User height (improves scaling) |
+
+---
+
+### ✅ Example Request
 
 ```bash
-pip install -r requirements.txt
-python app.py
-```
+curl -X POST https://live-measurements-api.onrender.com/upload_images \
+  -F "front=@front.jpeg" \
+  -F "left_side=@left_side.jpeg" \
+  -F "height_cm=170"
+### example response
+{
+  "debug_info": {
+    "focal_length": 3514.28,
+    "scale_factor": 0.1707,
+    "user_height_cm": 170.0
+  },
+  "measurements": {
+    "shoulder_width_cm": 42.68,
+    "chest_circumference_cm": 111.54,
+    "chest_circumference_in": 43.92,
+    "waist_circumference_cm": 47.19,
+    "waist_circumference_in": 18.58,
+    "hip_circumference_cm": 202.32,
+    "hip_circumference_in": 79.66,
+    "notes": [
+      "Hip reading may be distorted by clothing, stance, or camera angle. Stand straight, keep feet under hips, arms slightly out, and avoid jackets or loose fabric.",
+      "Waist reading may be too small. Make sure your midsection is fully visible and not heavily shadowed or blocked by arms."
+    ]
+  }
+}
 
-
-# API Endpoint
-
-**POST** `/measurements`
-
-> ℹ️ For reference, see the images placed  in the root directory.
-
----
-##  Request
-Send a `multipart/form-data` **POST** request with the following fields:
-
-- **`front_image`**: JPEG/PNG image captured from the front *(required)*
-- **`side_image`** *(optional)*: JPEG/PNG image from the side *(for better accuracy)*
-- **`user_height_cm`** : Real height of the person (in cm) for more precise calibration
-
----
-
-###  Example using `curl`
-
-```bash
-curl -X POST http://localhost:5000/measurements \
-  -F "front_image=@front.jpg" \
-  -F "side_image=@side.jpg" \
-  -F "user_height_cm=170"
-```
-
-# Measurements Provided
-
-| **Measurement Name**     | **Description**                                                   |
-|--------------------------|-------------------------------------------------------------------|
-| `shoulder_width`         | Distance between left and right shoulders                        |
-| `chest_width`            | Width at chest level                                              |
-| `chest_circumference`    | Estimated chest circumference                                     |
-| `waist_width`            | Width at waist level                                              |
-| `waist`                  | Estimated waist circumference                                     |
-| `hip_width`              | Distance between left and right hips                             |
-| `hip_circumference`      | Estimated hip circumference *(if side image is given)*           |
-
----
 
 > 📌 **Note:**  
 > The system uses **AI depth maps** and **contour-based width detection**.  
